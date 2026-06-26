@@ -131,7 +131,10 @@ function downloadText(filename: string, content: string, type: string) {
 function App() {
   const [values, setValues] = useState<FormValues>(initialValues);
   const [batchRows, setBatchRows] = useState<BatchRow[]>(sampleBatchRows);
+  const [showInventoryNumberOnLabels, setShowInventoryNumberOnLabels] = useState(true);
+  const [showSkuOnLabels, setShowSkuOnLabels] = useState(true);
   const [showQuantityOnLabels, setShowQuantityOnLabels] = useState(true);
+  const [showLocationOnLabels, setShowLocationOnLabels] = useState(true);
   const [copied, setCopied] = useState<CopyTarget>(null);
   const qrWrapRef = useRef<HTMLDivElement>(null);
 
@@ -410,10 +413,34 @@ function App() {
               <label className="label-option">
                 <input
                   type="checkbox"
+                  checked={showInventoryNumberOnLabels}
+                  onChange={(event) => setShowInventoryNumberOnLabels(event.target.checked)}
+                />
+                Show inventory number
+              </label>
+              <label className="label-option">
+                <input
+                  type="checkbox"
+                  checked={showSkuOnLabels}
+                  onChange={(event) => setShowSkuOnLabels(event.target.checked)}
+                />
+                Show SKU
+              </label>
+              <label className="label-option">
+                <input
+                  type="checkbox"
                   checked={showQuantityOnLabels}
                   onChange={(event) => setShowQuantityOnLabels(event.target.checked)}
                 />
                 Show quantity on labels
+              </label>
+              <label className="label-option">
+                <input
+                  type="checkbox"
+                  checked={showLocationOnLabels}
+                  onChange={(event) => setShowLocationOnLabels(event.target.checked)}
+                />
+                Show location
               </label>
               {duplicateScanCodes.size > 0 && (
                 <span className="warning-text">Duplicate scan codes: {Array.from(duplicateScanCodes).join(', ')}</span>
@@ -495,18 +522,42 @@ function App() {
                 <Trash2 size={17} /> Clear Batch
               </button>
             </div>
-            <LabelSheet payloads={batchPayloads} showQuantity={showQuantityOnLabels} />
+            <LabelSheet
+              payloads={batchPayloads}
+              showInventoryNumber={showInventoryNumberOnLabels}
+              showSku={showSkuOnLabels}
+              showQuantity={showQuantityOnLabels}
+              showLocation={showLocationOnLabels}
+            />
           </section>
         </section>
       </main>
       <div className="print-only">
-        <LabelSheet payloads={batchPayloads} showQuantity={showQuantityOnLabels} />
+        <LabelSheet
+          payloads={batchPayloads}
+          showInventoryNumber={showInventoryNumberOnLabels}
+          showSku={showSkuOnLabels}
+          showQuantity={showQuantityOnLabels}
+          showLocation={showLocationOnLabels}
+        />
       </div>
     </>
   );
 }
 
-function LabelSheet({ payloads, showQuantity }: { payloads: QrItemPayload[]; showQuantity: boolean }) {
+function LabelSheet({
+  payloads,
+  showInventoryNumber,
+  showSku,
+  showQuantity,
+  showLocation,
+}: {
+  payloads: QrItemPayload[];
+  showInventoryNumber: boolean;
+  showSku: boolean;
+  showQuantity: boolean;
+  showLocation: boolean;
+}) {
   if (payloads.length === 0) {
     return (
       <div className="label-empty">
@@ -527,11 +578,11 @@ function LabelSheet({ payloads, showQuantity }: { payloads: QrItemPayload[]; sho
               <QRCodeSVG value={labelJson} size={104} level="M" includeMargin />
             </div>
             <div className="label-copy">
-              <strong>{payload.name || payload.scan_code}</strong>
-              <span>{payload.scan_code}</span>
-              {payload.sku && <span>SKU {payload.sku}</span>}
+              <strong>{payload.name || (showInventoryNumber ? payload.scan_code : 'Inventory item')}</strong>
+              {showInventoryNumber && <span>{payload.scan_code}</span>}
+              {showSku && payload.sku && <span>SKU {payload.sku}</span>}
               {showQuantity && payload.quantity !== undefined && <span>Qty {payload.quantity}</span>}
-              {payload.location_name && <span>{payload.location_name}</span>}
+              {showLocation && payload.location_name && <span>{payload.location_name}</span>}
             </div>
           </article>
         );
