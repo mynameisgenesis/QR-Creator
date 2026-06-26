@@ -11,6 +11,7 @@ import {
   Printer,
   QrCode,
   RefreshCcw,
+  Save,
   Trash2,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -25,6 +26,7 @@ interface QrItemPayload {
   quantity?: number;
   location_name?: string;
   notes?: string;
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 type FormValues = {
@@ -42,6 +44,40 @@ type BatchRow = FormValues & {
   id: string;
 };
 
+type CustomFieldType = 'text' | 'number' | 'boolean' | 'json';
+
+type CustomField = {
+  id: string;
+  key: string;
+  value: string;
+  valueType: CustomFieldType;
+};
+
+type LabelOptions = {
+  showInventoryNumber: boolean;
+  showSku: boolean;
+  showQuantity: boolean;
+  showLocation: boolean;
+};
+
+type SavedTemplate = {
+  id: string;
+  name: string;
+  values: FormValues;
+  customFields: CustomField[];
+  labelOptions: LabelOptions;
+  savedAt: string;
+};
+
+type ParsedCustomField = {
+  field: CustomField;
+  value: string | number | boolean | null | undefined;
+  error?: string;
+};
+
+const reservedPayloadKeys = new Set(['type', 'version', 'scan_code', 'name', 'sku', 'quantity', 'location_name', 'notes']);
+const templatesStorageKey = 'qr-creator.templates.v1';
+
 const initialValues: FormValues = {
   scan_code: 'INV-2026-000123',
   name: 'Wireless Bluetooth Headphones',
@@ -50,6 +86,114 @@ const initialValues: FormValues = {
   location_name: 'A1-03-05',
   notes: 'Over-ear, noise cancelling, black',
 };
+
+const initialCustomFields: CustomField[] = [];
+
+const defaultLabelOptions: LabelOptions = {
+  showInventoryNumber: true,
+  showSku: true,
+  showQuantity: true,
+  showLocation: true,
+};
+
+const builtInTemplates: SavedTemplate[] = [{
+  id: 'starter-inventory-item',
+  name: 'Atlas Inventory Item',
+  values: initialValues,
+  customFields: initialCustomFields,
+  labelOptions: defaultLabelOptions,
+  savedAt: new Date(0).toISOString(),
+}, {
+  id: 'starter-basic-asset-tag',
+  name: 'Basic Asset Tag',
+  values: {
+    scan_code: 'ASSET-2026-0001',
+    name: 'Company Laptop',
+    sku: '',
+    quantity: '1',
+    location_name: 'IT Closet',
+    notes: 'Assigned equipment',
+  },
+  customFields: [{
+    id: 'asset-owner',
+    key: 'owner',
+    value: 'Unassigned',
+    valueType: 'text',
+  }, {
+    id: 'asset_status',
+    key: 'asset_status',
+    value: 'active',
+    valueType: 'text',
+  }],
+  labelOptions: {
+    showInventoryNumber: true,
+    showSku: false,
+    showQuantity: false,
+    showLocation: true,
+  },
+  savedAt: new Date(0).toISOString(),
+}, {
+  id: 'starter-storage-bin',
+  name: 'Storage Bin',
+  values: {
+    scan_code: 'BIN-A1-001',
+    name: 'Storage Bin A1',
+    sku: '',
+    quantity: '',
+    location_name: 'Aisle A1',
+    notes: 'Mixed inventory container',
+  },
+  customFields: [{
+    id: 'bin-zone',
+    key: 'zone',
+    value: 'A',
+    valueType: 'text',
+  }, {
+    id: 'requires_count',
+    key: 'requires_count',
+    value: 'true',
+    valueType: 'boolean',
+  }],
+  labelOptions: {
+    showInventoryNumber: true,
+    showSku: false,
+    showQuantity: false,
+    showLocation: true,
+  },
+  savedAt: new Date(0).toISOString(),
+}, {
+  id: 'starter-maintenance-check',
+  name: 'Maintenance Check',
+  values: {
+    scan_code: 'MAINT-2026-0001',
+    name: 'Maintenance Inspection',
+    sku: '',
+    quantity: '',
+    location_name: 'Warehouse Floor',
+    notes: 'Scan before service',
+  },
+  customFields: [{
+    id: 'maintenance_type',
+    key: 'maintenance_type',
+    value: 'inspection',
+    valueType: 'text',
+  }, {
+    id: 'priority',
+    key: 'priority',
+    value: 'normal',
+    valueType: 'text',
+  }],
+  labelOptions: {
+    showInventoryNumber: true,
+    showSku: false,
+    showQuantity: false,
+    showLocation: true,
+  },
+  savedAt: new Date(0).toISOString(),
+}];
+
+const builtInTemplateIds = new Set(builtInTemplates.map((template) => template.id));
+const defaultTemplate = builtInTemplates[0];
 
 const sampleBatchRows: BatchRow[] = [
   {
@@ -98,9 +242,75 @@ function textOrUndefined(value: string) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function buildPayload(values: FormValues): QrItemPayload {
+function parseCustomField(field: CustomField): ParsedCustomField {
+  const key = field.key.trim();
+
+  if (key.length === 0) {
+    return { field, value: undefined };
+  }
+
+  if (reservedPayloadKeys.has(key)) {
+    return { field, value: undefined, error: `${key} is already managed by the base form.` };
+  }
+
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+    return { field, value: undefined, error: 'Use letters, numbers, and underscores. Start with a letter or underscore.' };
+  }
+
+  const rawValue = field.value.trim();
+  if (rawValue.length === 0) {
+    return { field, value: undefined };
+  }
+
+  if (field.valueType === 'number') {
+    const numberValue = Number(rawValue);
+    return Number.isFinite(numberValue)
+      ? { field, value: numberValue }
+      : { field, value: undefined, error: `${key} must be a valid number.` };
+  }
+
+  if (field.valueType === 'boolean') {
+    return { field, value: rawValue === 'true' };
+  }
+
+  if (field.valueType === 'json') {
+    try {
+      const parsed = JSON.parse(rawValue) as string | number | boolean | null;
+      const isSupportedJsonValue = parsed === null || ['string', 'number', 'boolean'].includes(typeof parsed);
+      return isSupportedJsonValue
+        ? { field, value: parsed }
+        : { field, value: undefined, error: `${key} must be a JSON string, number, boolean, or null.` };
+    } catch {
+      return { field, value: undefined, error: `${key} must contain valid JSON.` };
+    }
+  }
+
+  return { field, value: rawValue };
+}
+
+function parseCustomFields(fields: CustomField[]) {
+  return fields.map(parseCustomField);
+}
+
+function buildCustomPayloadFields(parsedFields: ParsedCustomField[]) {
+  return parsedFields.reduce<Record<string, string | number | boolean | null>>((fields, parsed) => {
+    const key = parsed.field.key.trim();
+
+    if (parsed.error || key.length === 0 || parsed.value === undefined) {
+      return fields;
+    }
+
+    return {
+      ...fields,
+      [key]: parsed.value,
+    };
+  }, {});
+}
+
+function buildPayload(values: FormValues, customFields: ParsedCustomField[] = []): QrItemPayload {
   const quantityText = values.quantity.trim();
   const quantity = quantityText === '' ? undefined : Number(quantityText);
+  const extraFields = buildCustomPayloadFields(customFields);
 
   return {
     type: 'atlas.inventory.item',
@@ -111,6 +321,7 @@ function buildPayload(values: FormValues): QrItemPayload {
     ...(Number.isFinite(quantity) ? { quantity } : {}),
     ...(textOrUndefined(values.location_name) ? { location_name: values.location_name.trim() } : {}),
     ...(textOrUndefined(values.notes) ? { notes: values.notes.trim() } : {}),
+    ...extraFields,
   };
 }
 
@@ -128,23 +339,59 @@ function downloadText(filename: string, content: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
+function createBlankCustomField(): CustomField {
+  return {
+    id: crypto.randomUUID(),
+    key: '',
+    value: '',
+    valueType: 'text',
+  };
+}
+
+function readStoredTemplates() {
+  try {
+    const stored = window.localStorage.getItem(templatesStorageKey);
+    if (!stored) return builtInTemplates;
+
+    const parsed = JSON.parse(stored) as SavedTemplate[];
+    return [
+      ...builtInTemplates,
+      ...parsed.filter((template) => !builtInTemplateIds.has(template.id)),
+    ];
+  } catch {
+    return builtInTemplates;
+  }
+}
+
+function writeStoredTemplates(templates: SavedTemplate[]) {
+  const userTemplates = templates.filter((template) => !builtInTemplateIds.has(template.id));
+  window.localStorage.setItem(templatesStorageKey, JSON.stringify(userTemplates));
+}
+
 function App() {
   const [values, setValues] = useState<FormValues>(initialValues);
+  const [customFields, setCustomFields] = useState<CustomField[]>(initialCustomFields);
   const [batchRows, setBatchRows] = useState<BatchRow[]>(sampleBatchRows);
-  const [showInventoryNumberOnLabels, setShowInventoryNumberOnLabels] = useState(true);
-  const [showSkuOnLabels, setShowSkuOnLabels] = useState(true);
-  const [showQuantityOnLabels, setShowQuantityOnLabels] = useState(true);
-  const [showLocationOnLabels, setShowLocationOnLabels] = useState(true);
+  const [labelOptions, setLabelOptions] = useState<LabelOptions>(defaultLabelOptions);
+  const [templates, setTemplates] = useState<SavedTemplate[]>(() => readStoredTemplates());
+  const [selectedTemplateId, setSelectedTemplateId] = useState(defaultTemplate.id);
+  const [templateName, setTemplateName] = useState('');
   const [copied, setCopied] = useState<CopyTarget>(null);
   const qrWrapRef = useRef<HTMLDivElement>(null);
 
-  const payload = useMemo(() => buildPayload(values), [values]);
+  const parsedCustomFields = useMemo(() => parseCustomFields(customFields), [customFields]);
+  const customFieldErrors = parsedCustomFields.filter((parsed) => parsed.error);
+  const payload = useMemo(() => buildPayload(values, parsedCustomFields), [values, parsedCustomFields]);
   const json = useMemo(() => JSON.stringify(payload, null, 2), [payload]);
   const isScanCodeValid = payload.scan_code.length > 0;
   const quantityIsValid = values.quantity.trim() === '' || Number.isFinite(Number(values.quantity));
-  const canGenerate = isValidPayloadSource(values);
+  const customFieldsAreValid = customFieldErrors.length === 0;
+  const canGenerate = isValidPayloadSource(values) && customFieldsAreValid;
   const validBatchRows = useMemo(() => batchRows.filter(isValidPayloadSource), [batchRows]);
-  const batchPayloads = useMemo(() => validBatchRows.map(buildPayload), [validBatchRows]);
+  const batchPayloads = useMemo(
+    () => validBatchRows.map((row) => buildPayload(row, parsedCustomFields)),
+    [parsedCustomFields, validBatchRows],
+  );
   const duplicateScanCodes = useMemo(() => {
     const seen = new Set<string>();
     const duplicates = new Set<string>();
@@ -185,6 +432,60 @@ function App() {
       location_name: '',
       notes: '',
     });
+  }
+
+  function updateCustomField(id: string, updates: Partial<Omit<CustomField, 'id'>>) {
+    setCustomFields((current) => current.map((field) => (field.id === id ? { ...field, ...updates } : field)));
+  }
+
+  function addCustomField() {
+    setCustomFields((current) => [...current, createBlankCustomField()]);
+  }
+
+  function removeCustomField(id: string) {
+    setCustomFields((current) => current.filter((field) => field.id !== id));
+  }
+
+  function updateLabelOption(field: keyof LabelOptions, value: boolean) {
+    setLabelOptions((current) => ({ ...current, [field]: value }));
+  }
+
+  function applyTemplate(templateId: string) {
+    const template = templates.find((item) => item.id === templateId);
+    if (!template) return;
+
+    setSelectedTemplateId(templateId);
+    setValues(template.values);
+    setCustomFields(template.customFields);
+    setLabelOptions(template.labelOptions);
+  }
+
+  function saveTemplate() {
+    const name = templateName.trim();
+    if (name.length === 0) return;
+
+    const template: SavedTemplate = {
+      id: crypto.randomUUID(),
+      name,
+      values,
+      customFields,
+      labelOptions,
+      savedAt: new Date().toISOString(),
+    };
+    const nextTemplates = [...templates, template];
+    setTemplates(nextTemplates);
+    writeStoredTemplates(nextTemplates);
+    setSelectedTemplateId(template.id);
+    setTemplateName('');
+  }
+
+  function deleteSelectedTemplate() {
+    if (builtInTemplateIds.has(selectedTemplateId)) return;
+
+    const nextTemplates = templates.filter((template) => template.id !== selectedTemplateId);
+    setTemplates(nextTemplates);
+    writeStoredTemplates(nextTemplates);
+    applyTemplate(defaultTemplate.id);
   }
 
   function updateBatchRow(id: string, field: keyof FormValues, value: string) {
@@ -230,6 +531,7 @@ function App() {
           <nav>
             <a className="nav-item active" href="#generator"><QrCode size={18} />Single</a>
             <a className="nav-item" href="#batch"><Layers3 size={18} />Batch Labels</a>
+            <a className="nav-item" href="#templates"><Save size={18} />Templates</a>
             <a className="nav-item" href="#json"><Clipboard size={18} />JSON</a>
           </nav>
           <div className="tip">
@@ -323,6 +625,67 @@ function App() {
                 <small>{values.notes.length} / 260</small>
               </label>
 
+              <section className="custom-field-section">
+                <div className="inline-heading">
+                  <h3>Custom JSON Fields</h3>
+                  <button className="ghost-button compact-button" type="button" onClick={addCustomField}>
+                    <Plus size={16} /> Add Field
+                  </button>
+                </div>
+                {customFields.length === 0 ? (
+                  <p className="muted-copy">Add custom keys when this QR needs fields beyond the inventory template.</p>
+                ) : (
+                  <div className="custom-field-list">
+                    {customFields.map((field) => {
+                      const parsedField = parsedCustomFields.find((parsed) => parsed.field.id === field.id);
+
+                      return (
+                        <div className={`custom-field-row ${parsedField?.error ? 'has-error' : ''}`} key={field.id}>
+                          <input
+                            aria-label="Custom field key"
+                            value={field.key}
+                            onChange={(event) => updateCustomField(field.id, { key: event.target.value })}
+                            placeholder="custom_key"
+                          />
+                          <select
+                            aria-label="Custom field type"
+                            value={field.valueType}
+                            onChange={(event) => updateCustomField(field.id, { valueType: event.target.value as CustomFieldType })}
+                          >
+                            <option value="text">Text</option>
+                            <option value="number">Number</option>
+                            <option value="boolean">Boolean</option>
+                            <option value="json">JSON value</option>
+                          </select>
+                          {field.valueType === 'boolean' ? (
+                            <select
+                              aria-label="Custom field value"
+                              value={field.value}
+                              onChange={(event) => updateCustomField(field.id, { value: event.target.value })}
+                            >
+                              <option value="">Unset</option>
+                              <option value="true">True</option>
+                              <option value="false">False</option>
+                            </select>
+                          ) : (
+                            <input
+                              aria-label="Custom field value"
+                              value={field.value}
+                              onChange={(event) => updateCustomField(field.id, { value: event.target.value })}
+                              placeholder={field.valueType === 'json' ? '"value"' : 'Value'}
+                            />
+                          )}
+                          <button className="icon-button danger-lite" type="button" onClick={() => removeCustomField(field.id)} aria-label={`Remove ${field.key || 'custom field'}`}>
+                            <Trash2 size={16} />
+                          </button>
+                          {parsedField?.error && <small>{parsedField.error}</small>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
               <div className="form-footer">
                 <p><strong>*</strong> Required</p>
                 <div className="button-cluster">
@@ -413,35 +776,36 @@ function App() {
               <label className="label-option">
                 <input
                   type="checkbox"
-                  checked={showInventoryNumberOnLabels}
-                  onChange={(event) => setShowInventoryNumberOnLabels(event.target.checked)}
+                  checked={labelOptions.showInventoryNumber}
+                  onChange={(event) => updateLabelOption('showInventoryNumber', event.target.checked)}
                 />
                 Show inventory number
               </label>
               <label className="label-option">
                 <input
                   type="checkbox"
-                  checked={showSkuOnLabels}
-                  onChange={(event) => setShowSkuOnLabels(event.target.checked)}
+                  checked={labelOptions.showSku}
+                  onChange={(event) => updateLabelOption('showSku', event.target.checked)}
                 />
                 Show SKU
               </label>
               <label className="label-option">
                 <input
                   type="checkbox"
-                  checked={showQuantityOnLabels}
-                  onChange={(event) => setShowQuantityOnLabels(event.target.checked)}
+                  checked={labelOptions.showQuantity}
+                  onChange={(event) => updateLabelOption('showQuantity', event.target.checked)}
                 />
                 Show quantity on labels
               </label>
               <label className="label-option">
                 <input
                   type="checkbox"
-                  checked={showLocationOnLabels}
-                  onChange={(event) => setShowLocationOnLabels(event.target.checked)}
+                  checked={labelOptions.showLocation}
+                  onChange={(event) => updateLabelOption('showLocation', event.target.checked)}
                 />
                 Show location
               </label>
+              {customFields.length > 0 && <span>{customFields.length} custom fields applied</span>}
               {duplicateScanCodes.size > 0 && (
                 <span className="warning-text">Duplicate scan codes: {Array.from(duplicateScanCodes).join(', ')}</span>
               )}
@@ -524,21 +888,53 @@ function App() {
             </div>
             <LabelSheet
               payloads={batchPayloads}
-              showInventoryNumber={showInventoryNumberOnLabels}
-              showSku={showSkuOnLabels}
-              showQuantity={showQuantityOnLabels}
-              showLocation={showLocationOnLabels}
+              labelOptions={labelOptions}
             />
+          </section>
+
+          <section className="template-section" id="templates">
+            <div className="batch-header">
+              <div>
+                <p className="section-label">Templates</p>
+                <h2>Save reusable QR setups</h2>
+              </div>
+              <div className="button-cluster">
+                <button className="outline-button" type="button" onClick={deleteSelectedTemplate} disabled={builtInTemplateIds.has(selectedTemplateId)}>
+                  <Trash2 size={17} /> Delete Selected
+                </button>
+              </div>
+            </div>
+
+            <div className="panel template-panel">
+              <label className="field template-picker">
+                <span>Use Template</span>
+                <select value={selectedTemplateId} onChange={(event) => applyTemplate(event.target.value)}>
+                  {templates.map((template) => (
+                    <option value={template.id} key={template.id}>
+                      {template.name}{builtInTemplateIds.has(template.id) ? ' (built-in)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field template-name-field">
+                <span>New Template Name</span>
+                <input
+                  value={templateName}
+                  onChange={(event) => setTemplateName(event.target.value)}
+                  placeholder="Warehouse intake label"
+                />
+              </label>
+              <button className="primary-button" type="button" onClick={saveTemplate} disabled={templateName.trim().length === 0 || !customFieldsAreValid}>
+                <Save size={18} /> Save Template
+              </button>
+            </div>
           </section>
         </section>
       </main>
       <div className="print-only">
         <LabelSheet
           payloads={batchPayloads}
-          showInventoryNumber={showInventoryNumberOnLabels}
-          showSku={showSkuOnLabels}
-          showQuantity={showQuantityOnLabels}
-          showLocation={showLocationOnLabels}
+          labelOptions={labelOptions}
         />
       </div>
     </>
@@ -547,16 +943,10 @@ function App() {
 
 function LabelSheet({
   payloads,
-  showInventoryNumber,
-  showSku,
-  showQuantity,
-  showLocation,
+  labelOptions,
 }: {
   payloads: QrItemPayload[];
-  showInventoryNumber: boolean;
-  showSku: boolean;
-  showQuantity: boolean;
-  showLocation: boolean;
+  labelOptions: LabelOptions;
 }) {
   if (payloads.length === 0) {
     return (
@@ -578,11 +968,11 @@ function LabelSheet({
               <QRCodeSVG value={labelJson} size={104} level="M" includeMargin />
             </div>
             <div className="label-copy">
-              <strong>{payload.name || (showInventoryNumber ? payload.scan_code : 'Inventory item')}</strong>
-              {showInventoryNumber && <span>{payload.scan_code}</span>}
-              {showSku && payload.sku && <span>SKU {payload.sku}</span>}
-              {showQuantity && payload.quantity !== undefined && <span>Qty {payload.quantity}</span>}
-              {showLocation && payload.location_name && <span>{payload.location_name}</span>}
+              <strong>{payload.name || (labelOptions.showInventoryNumber ? payload.scan_code : 'Inventory item')}</strong>
+              {labelOptions.showInventoryNumber && <span>{payload.scan_code}</span>}
+              {labelOptions.showSku && payload.sku && <span>SKU {payload.sku}</span>}
+              {labelOptions.showQuantity && payload.quantity !== undefined && <span>Qty {payload.quantity}</span>}
+              {labelOptions.showLocation && payload.location_name && <span>{payload.location_name}</span>}
             </div>
           </article>
         );
