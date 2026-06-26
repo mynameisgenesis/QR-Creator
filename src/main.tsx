@@ -39,6 +39,7 @@ type FormValues = {
 };
 
 type CopyTarget = 'json' | 'qr' | null;
+type ActiveView = 'single' | 'batch' | 'templates';
 
 type BatchRow = FormValues & {
   id: string;
@@ -369,6 +370,7 @@ function writeStoredTemplates(templates: SavedTemplate[]) {
 }
 
 function App() {
+  const [activeView, setActiveView] = useState<ActiveView>('single');
   const [values, setValues] = useState<FormValues>(initialValues);
   const [customFields, setCustomFields] = useState<CustomField[]>(initialCustomFields);
   const [batchRows, setBatchRows] = useState<BatchRow[]>(sampleBatchRows);
@@ -404,6 +406,20 @@ function App() {
 
     return duplicates;
   }, [validBatchRows]);
+  const activeViewCopy = {
+    single: {
+      label: 'QR Code Generator',
+      title: 'Create inventory intake QR labels',
+    },
+    batch: {
+      label: 'Batch Labels',
+      title: 'Create many labels at once',
+    },
+    templates: {
+      label: 'Templates',
+      title: 'Save reusable QR setups',
+    },
+  }[activeView];
 
   function updateField(field: keyof FormValues, value: string) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -529,10 +545,15 @@ function App() {
             <strong>QR Inventory</strong>
           </div>
           <nav>
-            <a className="nav-item active" href="#generator"><QrCode size={18} />Single</a>
-            <a className="nav-item" href="#batch"><Layers3 size={18} />Batch Labels</a>
-            <a className="nav-item" href="#templates"><Save size={18} />Templates</a>
-            <a className="nav-item" href="#json"><Clipboard size={18} />JSON</a>
+            <button className={`nav-item ${activeView === 'single' ? 'active' : ''}`} type="button" onClick={() => setActiveView('single')}>
+              <QrCode size={18} />Single
+            </button>
+            <button className={`nav-item ${activeView === 'batch' ? 'active' : ''}`} type="button" onClick={() => setActiveView('batch')}>
+              <Layers3 size={18} />Batch Labels
+            </button>
+            <button className={`nav-item ${activeView === 'templates' ? 'active' : ''}`} type="button" onClick={() => setActiveView('templates')}>
+              <Save size={18} />Templates
+            </button>
           </nav>
           <div className="tip">
             <AlertCircle size={18} />
@@ -543,19 +564,36 @@ function App() {
         <section className="workspace">
           <header className="topbar">
             <div>
-              <p className="section-label">QR Code Generator</p>
-              <h1>Create inventory intake QR labels</h1>
+              <p className="section-label">{activeViewCopy.label}</p>
+              <h1>{activeViewCopy.title}</h1>
             </div>
             <div className="topbar-actions">
-              <button className="ghost-button" type="button" onClick={() => setValues(initialValues)}>
-                <RefreshCcw size={17} /> Sample
-              </button>
-              <button className="primary-button" type="button" onClick={printLabels} disabled={batchPayloads.length === 0}>
-                <Printer size={18} /> Print Labels
-              </button>
+              {activeView === 'single' && (
+                <button className="ghost-button" type="button" onClick={() => setValues(initialValues)}>
+                  <RefreshCcw size={17} /> Sample
+                </button>
+              )}
+              {activeView === 'batch' && (
+                <button className="primary-button" type="button" onClick={printLabels} disabled={batchPayloads.length === 0}>
+                  <Printer size={18} /> Print Labels
+                </button>
+              )}
             </div>
           </header>
 
+          <nav className="mobile-nav" aria-label="Workspace navigation">
+            <button className={`nav-item ${activeView === 'single' ? 'active' : ''}`} type="button" onClick={() => setActiveView('single')}>
+              <QrCode size={18} />Single
+            </button>
+            <button className={`nav-item ${activeView === 'batch' ? 'active' : ''}`} type="button" onClick={() => setActiveView('batch')}>
+              <Layers3 size={18} />Batch Labels
+            </button>
+            <button className={`nav-item ${activeView === 'templates' ? 'active' : ''}`} type="button" onClick={() => setActiveView('templates')}>
+              <Save size={18} />Templates
+            </button>
+          </nav>
+
+          {activeView === 'single' && (
           <div className="content-grid" id="generator">
             <form className="panel form-panel" onSubmit={(event) => event.preventDefault()}>
               <div className="panel-heading">
@@ -750,13 +788,11 @@ function App() {
               </div>
             </section>
           </div>
+          )}
 
+          {activeView === 'batch' && (
           <section className="batch-section" id="batch">
-            <div className="batch-header">
-              <div>
-                <p className="section-label">Batch Labels</p>
-                <h2>Create many labels at once</h2>
-              </div>
+            <div className="batch-header actions-only">
               <div className="button-cluster">
                 <button className="ghost-button" type="button" onClick={addBlankRow}>
                   <Plus size={17} /> Add Row
@@ -891,13 +927,11 @@ function App() {
               labelOptions={labelOptions}
             />
           </section>
+          )}
 
+          {activeView === 'templates' && (
           <section className="template-section" id="templates">
-            <div className="batch-header">
-              <div>
-                <p className="section-label">Templates</p>
-                <h2>Save reusable QR setups</h2>
-              </div>
+            <div className="batch-header actions-only">
               <div className="button-cluster">
                 <button className="outline-button" type="button" onClick={deleteSelectedTemplate} disabled={builtInTemplateIds.has(selectedTemplateId)}>
                   <Trash2 size={17} /> Delete Selected
@@ -929,6 +963,7 @@ function App() {
               </button>
             </div>
           </section>
+          )}
         </section>
       </main>
       <div className="print-only">
