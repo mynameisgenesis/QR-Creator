@@ -49,6 +49,15 @@ export type SavedTemplate = {
   customFields: CustomField[];
   labelOptions: LabelOptions;
   savedAt: string;
+  updatedAt?: string;
+  userId?: string;
+};
+
+export type TemplateDraft = {
+  name: string;
+  values: FormValues;
+  customFields: CustomField[];
+  labelOptions: LabelOptions;
 };
 
 export type ParsedCustomField = {

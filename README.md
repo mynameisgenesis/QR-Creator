@@ -24,3 +24,9 @@ npm run dev
 ```
 
 The QR workspace is protected by Supabase Auth. Users can sign up, sign in, and sign out with email and password.
+
+## Supabase Template Storage
+
+Run the SQL in `supabase-template-schema.sql` in your Supabase SQL editor. It creates `public.qr_templates` with row-level security so each signed-in user only reads and writes their own templates.
+
+Templates saved in the app are scoped to `auth.uid()` through the `user_id` column. Built-in starter templates remain local in the app and are visible to everyone.

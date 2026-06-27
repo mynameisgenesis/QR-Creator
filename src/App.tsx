@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Printer, RefreshCcw } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { AuthGate } from './components/AuthGate';
@@ -8,10 +8,10 @@ import { MobileNavigation, SidebarNavigation } from './components/Navigation';
 import { SingleView } from './components/SingleView';
 import { TemplatesView } from './components/TemplatesView';
 import { supabase } from './lib/supabase';
-import { builtInTemplateIds, defaultLabelOptions, defaultTemplate, initialCustomFields, initialValues, sampleBatchRows } from './data';
+import { builtInTemplateIds, builtInTemplates, defaultLabelOptions, defaultTemplate, initialCustomFields, initialValues, sampleBatchRows } from './data';
 import { buildPayload, isValidPayloadSource, parseCustomFields } from './payload';
-import { readStoredTemplates, writeStoredTemplates } from './storage';
-import type { ActiveView, BatchRow, CopyTarget, CustomField, FormValues, LabelOptions, SavedTemplate } from './types';
+import { createUserTemplate, deleteUserTemplate, fetchUserTemplates, updateUserTemplate } from './templateService';
+import type { ActiveView, BatchRow, CopyTarget, CustomField, FormValues, LabelOptions, SavedTemplate, TemplateDraft } from './types';
 import { createBlankCustomField, createBlankRow, downloadText } from './utils';
 
 const viewCopy = {
@@ -45,11 +45,13 @@ function ProtectedWorkspace({ session }: ProtectedWorkspaceProps) {
   const [customFields, setCustomFields] = useState<CustomField[]>(initialCustomFields);
   const [batchRows, setBatchRows] = useState<BatchRow[]>(sampleBatchRows);
   const [labelOptions, setLabelOptions] = useState<LabelOptions>(defaultLabelOptions);
-  const [templates, setTemplates] = useState<SavedTemplate[]>(() => readStoredTemplates());
+  const [userTemplates, setUserTemplates] = useState<SavedTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState(defaultTemplate.id);
-  const [templateName, setTemplateName] = useState('');
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
+  const [templateError, setTemplateError] = useState<string | null>(null);
   const [copied, setCopied] = useState<CopyTarget>(null);
   const qrWrapRef = useRef<HTMLDivElement>(null);
+  const allTemplates = useMemo(() => [...builtInTemplates, ...userTemplates], [userTemplates]);
 
   const parsedCustomFields = useMemo(() => parseCustomFields(customFields), [customFields]);
   const customFieldErrors = parsedCustomFields.filter((parsed) => parsed.error);
@@ -77,6 +79,32 @@ function ProtectedWorkspace({ session }: ProtectedWorkspaceProps) {
     return duplicates;
   }, [validBatchRows]);
   const activeViewCopy = viewCopy[activeView];
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadTemplates() {
+      setIsLoadingTemplates(true);
+      setTemplateError(null);
+
+      try {
+        const loadedTemplates = await fetchUserTemplates(session.user.id);
+        if (!isMounted) return;
+        setUserTemplates(loadedTemplates);
+      } catch (error) {
+        if (!isMounted) return;
+        setTemplateError(error instanceof Error ? error.message : 'Unable to load templates.');
+      } finally {
+        if (isMounted) setIsLoadingTemplates(false);
+      }
+    }
+
+    loadTemplates();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session.user.id]);
 
   function updateField(field: keyof FormValues, value: string) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -124,7 +152,7 @@ function ProtectedWorkspace({ session }: ProtectedWorkspaceProps) {
   }
 
   function applyTemplate(templateId: string) {
-    const template = templates.find((item) => item.id === templateId);
+    const template = allTemplates.find((item) => item.id === templateId);
     if (!template) return;
 
     setSelectedTemplateId(templateId);
@@ -147,32 +175,31 @@ function ProtectedWorkspace({ session }: ProtectedWorkspaceProps) {
     setLabelOptions(defaultLabelOptions);
   }
 
-  function saveTemplate() {
-    const name = templateName.trim();
-    if (name.length === 0) return;
-
-    const template: SavedTemplate = {
-      id: crypto.randomUUID(),
-      name,
-      values,
-      customFields,
-      labelOptions,
-      savedAt: new Date().toISOString(),
-    };
-    const nextTemplates = [...templates, template];
-    setTemplates(nextTemplates);
-    writeStoredTemplates(nextTemplates);
-    setSelectedTemplateId(template.id);
-    setTemplateName('');
+  async function createTemplate(draft: TemplateDraft) {
+    setTemplateError(null);
+    const createdTemplate = await createUserTemplate(session.user.id, draft);
+    setUserTemplates((current) => [createdTemplate, ...current]);
+    setSelectedTemplateId(createdTemplate.id);
+    return createdTemplate;
   }
 
-  function deleteSelectedTemplate() {
-    if (builtInTemplateIds.has(selectedTemplateId)) return;
+  async function updateTemplate(templateId: string, draft: TemplateDraft) {
+    setTemplateError(null);
+    const updatedTemplate = await updateUserTemplate(templateId, session.user.id, draft);
+    setUserTemplates((current) => current.map((template) => (template.id === templateId ? updatedTemplate : template)));
+    setSelectedTemplateId(updatedTemplate.id);
+    return updatedTemplate;
+  }
 
-    const nextTemplates = templates.filter((template) => template.id !== selectedTemplateId);
-    setTemplates(nextTemplates);
-    writeStoredTemplates(nextTemplates);
-    applyTemplate(defaultTemplate.id);
+  async function deleteTemplate(templateId: string) {
+    if (builtInTemplateIds.has(templateId)) return;
+
+    setTemplateError(null);
+    await deleteUserTemplate(templateId, session.user.id);
+    setUserTemplates((current) => current.filter((template) => template.id !== templateId));
+    if (selectedTemplateId === templateId) {
+      applyTemplate(defaultTemplate.id);
+    }
   }
 
   function updateBatchRow(id: string, field: keyof FormValues, value: string) {
@@ -254,7 +281,7 @@ function ProtectedWorkspace({ session }: ProtectedWorkspaceProps) {
               canGenerate={canGenerate}
               customFields={customFields}
               parsedCustomFields={parsedCustomFields}
-              templates={templates}
+              templates={allTemplates}
               selectedTemplateId={selectedTemplateId}
               oneTimeTemplateId={oneTimeTemplateId}
               builtInTemplateIds={builtInTemplateIds}
@@ -295,15 +322,16 @@ function ProtectedWorkspace({ session }: ProtectedWorkspaceProps) {
 
           {activeView === 'templates' && (
             <TemplatesView
-              templates={templates}
-              selectedTemplateId={templates.some((template) => template.id === selectedTemplateId) ? selectedTemplateId : defaultTemplate.id}
-              templateName={templateName}
-              builtInTemplateIds={builtInTemplateIds}
-              canSaveTemplate={templateName.trim().length > 0 && customFieldsAreValid}
+              userTemplates={userTemplates}
+              isLoading={isLoadingTemplates}
+              error={templateError}
+              currentValues={values}
+              currentCustomFields={customFields}
+              currentLabelOptions={labelOptions}
+              onCreateTemplate={createTemplate}
+              onUpdateTemplate={updateTemplate}
+              onDeleteTemplate={deleteTemplate}
               onApplyTemplate={applyTemplate}
-              onChangeTemplateName={setTemplateName}
-              onSaveTemplate={saveTemplate}
-              onDeleteSelectedTemplate={deleteSelectedTemplate}
             />
           )}
         </section>
