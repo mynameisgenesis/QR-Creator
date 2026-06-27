@@ -1,10 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
 import { Printer, RefreshCcw } from 'lucide-react';
+import type { Session } from '@supabase/supabase-js';
+import { AuthGate } from './components/AuthGate';
 import { BatchView } from './components/BatchView';
 import { LabelSheet } from './components/LabelSheet';
 import { MobileNavigation, SidebarNavigation } from './components/Navigation';
 import { SingleView } from './components/SingleView';
 import { TemplatesView } from './components/TemplatesView';
+import { supabase } from './lib/supabase';
 import { builtInTemplateIds, defaultLabelOptions, defaultTemplate, initialCustomFields, initialValues, sampleBatchRows } from './data';
 import { buildPayload, isValidPayloadSource, parseCustomFields } from './payload';
 import { readStoredTemplates, writeStoredTemplates } from './storage';
@@ -29,6 +32,14 @@ const viewCopy = {
 const oneTimeTemplateId = 'one-time-custom-label';
 
 export function App() {
+  return <AuthGate>{(session) => <ProtectedWorkspace session={session} />}</AuthGate>;
+}
+
+type ProtectedWorkspaceProps = {
+  session: Session;
+};
+
+function ProtectedWorkspace({ session }: ProtectedWorkspaceProps) {
   const [activeView, setActiveView] = useState<ActiveView>('single');
   const [values, setValues] = useState<FormValues>(initialValues);
   const [customFields, setCustomFields] = useState<CustomField[]>(initialCustomFields);
@@ -196,6 +207,10 @@ export function App() {
     window.print();
   }
 
+  async function signOut() {
+    await supabase?.auth.signOut();
+  }
+
   return (
     <>
       <main className="app-shell">
@@ -218,6 +233,12 @@ export function App() {
                   <Printer size={18} /> Print Labels
                 </button>
               )}
+              <div className="account-menu">
+                <span>{session.user.email}</span>
+                <button className="outline-button compact-button" type="button" onClick={signOut}>
+                  Sign Out
+                </button>
+              </div>
             </div>
           </header>
 

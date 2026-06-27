@@ -140,6 +140,25 @@ nav {
   flex-wrap: wrap;
 }
 
+.account-menu {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border-left: 1px solid #dfe7e6;
+  padding-left: 14px;
+}
+
+.account-menu span {
+  max-width: 220px;
+  color: #526176;
+  font-size: 0.9rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .topbar h1,
 .topbar p {
   margin: 0;
@@ -691,6 +710,80 @@ pre {
   display: none;
 }
 
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f5f7f8;
+}
+
+.auth-card {
+  width: min(100%, 520px);
+  border: 1px solid #dbe4e2;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 60px rgb(32 43 59 / 8%);
+  padding: 28px;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.auth-brand h1 {
+  margin: 4px 0 0;
+  font-size: 1.55rem;
+  line-height: 1.15;
+}
+
+.auth-copy {
+  color: #526176;
+  line-height: 1.5;
+}
+
+.auth-form {
+  display: grid;
+  gap: 4px;
+}
+
+.auth-error,
+.auth-message {
+  margin: 0 0 12px;
+  border-radius: 7px;
+  padding: 12px;
+  line-height: 1.4;
+}
+
+.auth-error {
+  color: #8f1f1b;
+  background: #fff1f1;
+}
+
+.auth-message {
+  color: #006d5f;
+  background: #e4f5f0;
+}
+
+.auth-switch {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 16px;
+  border-radius: 7px;
+  background: transparent;
+  color: #007565;
+  font-weight: 800;
+}
+
+.env-list {
+  min-height: 0;
+  max-height: none;
+  color: #172033;
+}
+
 @media (max-width: 1120px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -757,9 +850,21 @@ pre {
   .form-footer,
   .json-header,
   .topbar-actions,
+  .account-menu,
   .button-cluster {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .account-menu {
+    width: 100%;
+    border-left: 0;
+    border-top: 1px solid #dfe7e6;
+    padding: 12px 0 0;
+  }
+
+  .account-menu span {
+    max-width: 100%;
   }
 
   .primary-button,
