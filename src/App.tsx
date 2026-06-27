@@ -26,6 +26,8 @@ const viewCopy = {
   },
 };
 
+const oneTimeTemplateId = 'one-time-custom-label';
+
 export function App() {
   const [activeView, setActiveView] = useState<ActiveView>('single');
   const [values, setValues] = useState<FormValues>(initialValues);
@@ -118,6 +120,20 @@ export function App() {
     setValues(template.values);
     setCustomFields(template.customFields);
     setLabelOptions(template.labelOptions);
+  }
+
+  function startOneTimeCustomLabel() {
+    setSelectedTemplateId(oneTimeTemplateId);
+    setValues({
+      scan_code: '',
+      name: '',
+      sku: '',
+      quantity: '',
+      location_name: '',
+      notes: '',
+    });
+    setCustomFields([]);
+    setLabelOptions(defaultLabelOptions);
   }
 
   function saveTemplate() {
@@ -217,8 +233,14 @@ export function App() {
               canGenerate={canGenerate}
               customFields={customFields}
               parsedCustomFields={parsedCustomFields}
+              templates={templates}
+              selectedTemplateId={selectedTemplateId}
+              oneTimeTemplateId={oneTimeTemplateId}
+              builtInTemplateIds={builtInTemplateIds}
               copied={copied}
               qrWrapRef={qrWrapRef}
+              onApplyTemplate={applyTemplate}
+              onStartOneTimeCustomLabel={startOneTimeCustomLabel}
               onUpdateField={updateField}
               onUpdateCustomField={updateCustomField}
               onAddCustomField={addCustomField}
@@ -253,7 +275,7 @@ export function App() {
           {activeView === 'templates' && (
             <TemplatesView
               templates={templates}
-              selectedTemplateId={selectedTemplateId}
+              selectedTemplateId={templates.some((template) => template.id === selectedTemplateId) ? selectedTemplateId : defaultTemplate.id}
               templateName={templateName}
               builtInTemplateIds={builtInTemplateIds}
               canSaveTemplate={templateName.trim().length > 0 && customFieldsAreValid}

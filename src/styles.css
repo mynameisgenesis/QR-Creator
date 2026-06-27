@@ -330,6 +330,27 @@ nav {
   margin-bottom: 22px;
 }
 
+.template-inline-panel {
+  border-bottom: 1px solid #dfe7e6;
+  margin-bottom: 22px;
+}
+
+.template-inline-panel select {
+  width: 100%;
+  min-height: 52px;
+  border: 1px solid #ccd7d8;
+  border-radius: 7px;
+  color: #172033;
+  background: #ffffff;
+  padding: 0 16px;
+  outline: none;
+}
+
+.template-inline-panel select:focus {
+  border-color: #008f7a;
+  box-shadow: 0 0 0 3px rgb(0 143 122 / 14%);
+}
+
 .custom-field-list {
   display: grid;
   gap: 10px;

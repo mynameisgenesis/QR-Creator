@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 import { Check, Clipboard, Copy, Download, Plus, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import type { CopyTarget, CustomField, CustomFieldType, FormValues, ParsedCustomField, QrItemPayload } from '../types';
+import type { CopyTarget, CustomField, CustomFieldType, FormValues, ParsedCustomField, QrItemPayload, SavedTemplate } from '../types';
 
 type SingleViewProps = {
   values: FormValues;
@@ -12,8 +12,14 @@ type SingleViewProps = {
   canGenerate: boolean;
   customFields: CustomField[];
   parsedCustomFields: ParsedCustomField[];
+  templates: SavedTemplate[];
+  selectedTemplateId: string;
+  oneTimeTemplateId: string;
+  builtInTemplateIds: Set<string>;
   copied: CopyTarget;
   qrWrapRef: RefObject<HTMLDivElement | null>;
+  onApplyTemplate: (templateId: string) => void;
+  onStartOneTimeCustomLabel: () => void;
   onUpdateField: (field: keyof FormValues, value: string) => void;
   onUpdateCustomField: (id: string, updates: Partial<Omit<CustomField, 'id'>>) => void;
   onAddCustomField: () => void;
@@ -34,8 +40,14 @@ export function SingleView({
   canGenerate,
   customFields,
   parsedCustomFields,
+  templates,
+  selectedTemplateId,
+  oneTimeTemplateId,
+  builtInTemplateIds,
   copied,
   qrWrapRef,
+  onApplyTemplate,
+  onStartOneTimeCustomLabel,
   onUpdateField,
   onUpdateCustomField,
   onAddCustomField,
@@ -52,6 +64,31 @@ export function SingleView({
         <div className="panel-heading">
           <span>1.</span>
           <h2>Enter Item Details</h2>
+        </div>
+
+        <div className="template-inline-panel">
+          <label className="field">
+            <span>Template</span>
+            <select
+              value={selectedTemplateId}
+              onChange={(event) => {
+                if (event.target.value === oneTimeTemplateId) {
+                  onStartOneTimeCustomLabel();
+                  return;
+                }
+
+                onApplyTemplate(event.target.value);
+              }}
+            >
+              <option value={oneTimeTemplateId}>One-time custom label</option>
+              {templates.map((template) => (
+                <option value={template.id} key={template.id}>
+                  {template.name}{builtInTemplateIds.has(template.id) ? ' (built-in)' : ''}
+                </option>
+              ))}
+            </select>
+            <small>Select a saved setup, or use a one-time label for custom fields you do not want to save.</small>
+          </label>
         </div>
 
         <label className="field">
