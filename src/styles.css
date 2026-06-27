@@ -507,6 +507,36 @@ h2 {
   color: #66758a;
 }
 
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.password-field input {
+  padding-right: 52px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: #526176;
+  background: transparent;
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  color: #006d5f;
+  background: #e4f5f0;
+  outline: none;
+}
+
 .field-row {
   display: grid;
   grid-template-columns: 1.3fr 0.8fr;

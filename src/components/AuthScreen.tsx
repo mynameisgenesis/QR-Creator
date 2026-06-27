@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { LockKeyhole, QrCode } from 'lucide-react';
+import { Eye, EyeOff, LockKeyhole, QrCode } from 'lucide-react';
 import { supabaseEnv } from '../lib/env';
 import { supabase } from '../lib/supabase';
 
@@ -7,6 +7,7 @@ export function AuthScreen() {
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -91,14 +92,25 @@ export function AuthScreen() {
           </label>
           <label className="field">
             <span>Password</span>
-            <input
-              autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
-              minLength={6}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-              type="password"
-              value={password}
-            />
+            <span className="password-field">
+              <input
+                autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
+                minLength={6}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                type={isPasswordVisible ? 'text' : 'password'}
+                value={password}
+              />
+              <button
+                aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
+                aria-pressed={isPasswordVisible}
+                className="password-toggle"
+                type="button"
+                onClick={() => setIsPasswordVisible((current) => !current)}
+              >
+                {isPasswordVisible ? <Eye size={18} /> : <EyeOff size={18} />}
+              </button>
+            </span>
           </label>
 
           {error && <p className="auth-error">{error}</p>}
